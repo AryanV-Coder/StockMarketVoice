@@ -1,0 +1,7 @@
+django
+twilio
+python-dotenv
+sarvam
+groq
+langchain
+langchain-community
