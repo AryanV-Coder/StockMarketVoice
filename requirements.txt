@@ -5,3 +5,5 @@ sarvam
 groq
 langchain
 langchain-community
+fastapi
+uvicorn
