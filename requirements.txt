@@ -1,9 +1,8 @@
-django
 twilio
 python-dotenv
-sarvam
+sarvamai
 groq
-langchain
-langchain-community
 fastapi
 uvicorn
+requests
+python-multipart
