@@ -14,7 +14,7 @@ PHONE_NUMBER = os.getenv("TEST_PHONE_NUMBER")
 
 
 def main():
-    print(f"📞 Calling +91{PHONE_NUMBER} ...")
+    print(f"📞 Calling +91 {PHONE_NUMBER} ...")
     response = requests.post(
         f"{SERVER_URL}/call",
         data={"phone_number": PHONE_NUMBER},
