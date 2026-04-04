@@ -21,5 +21,5 @@ def make_call(phone_number: str) -> str:
         from_=config.TWILIO_PHONE_NUMBER,
         url=f"{config.SERVER_URL}/voice",
     )
-    print(f"✅ [Twilio] Call initiated to +91{phone_number} | SID: {call.sid}")
+    print(f"✅ [Twilio] Call initiated to +91 {phone_number} | SID: {call.sid}")
     return call.sid

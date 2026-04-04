@@ -1,14 +1,16 @@
 import base64
 import os
 import uuid
-from sarvamai import SarvamAI
+from typing import Callable, Awaitable
+from sarvamai import SarvamAI, AsyncSarvamAI
+from sarvamai import AudioOutput, EventResponse
 from sarvamai.core.api_error import ApiError
 import config
 
 
 client = SarvamAI(api_subscription_key=config.SARVAM_API_KEY)
 
-# Directory to store generated audio files
+# Directory to store generated audio files (for REST TTS, kept for fallback)
 AUDIO_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "audio_files")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
@@ -25,7 +27,7 @@ def text_to_speech(text: str, language: str = "hi-IN", speaker: str = "shubh") -
             target_language_code=language,
             speaker=speaker,
             model="bulbul:v3",
-            speech_sample_rate=8000,  # Twilio expects 8kHz
+            speech_sample_rate=8000,
             output_audio_codec="wav",
         )
 
@@ -33,7 +35,6 @@ def text_to_speech(text: str, language: str = "hi-IN", speaker: str = "shubh") -
             print("❌ Sarvam TTS returned no audio")
             return None
 
-        # Decode the base64 audio and save to file
         audio_bytes = base64.b64decode(response.audios[0])
         filename = f"{uuid.uuid4().hex}.wav"
         filepath = os.path.join(AUDIO_DIR, filename)
@@ -54,3 +55,64 @@ def text_to_speech(text: str, language: str = "hi-IN", speaker: str = "shubh") -
     except Exception as e:
         print(f"❌ Unexpected Sarvam TTS Error: {e}")
         return None
+
+
+async def stream_tts(
+    text: str,
+    on_audio_chunk: Callable[[bytes], Awaitable[None]],
+    language: str = "hi-IN",
+    speaker: str = "shubh",
+) -> bool:
+    """
+    Stream text-to-speech using Sarvam AI WebSocket API.
+    Calls `on_audio_chunk(raw_audio_bytes)` for each audio chunk received.
+
+    Args:
+        text: The text to convert to speech.
+        on_audio_chunk: Async callback receiving raw audio bytes for each chunk.
+        language: Target language code.
+        speaker: Speaker voice name.
+
+    Returns:
+        True if successful, False on error.
+    """
+    async_client = AsyncSarvamAI(api_subscription_key=config.SARVAM_API_KEY)
+
+    try:
+        async with async_client.text_to_speech_streaming.connect(
+            model="bulbul:v3", send_completion_event=True
+        ) as ws:
+            await ws.configure(
+                target_language_code=language,
+                speaker=speaker,
+                output_audio_codec="mulaw",
+                speech_sample_rate=8000,
+            )
+
+            await ws.convert(text)
+            await ws.flush()
+
+            chunk_count = 0
+            async for message in ws:
+                if isinstance(message, AudioOutput):
+                    chunk_count += 1
+                    audio_bytes = base64.b64decode(message.data.audio)
+                    await on_audio_chunk(audio_bytes)
+
+                elif isinstance(message, EventResponse):
+                    if message.data.event_type == "final":
+                        break
+
+            print(f"✅ [Sarvam TTS Streaming] Sent {chunk_count} chunks")
+            return True
+
+    except ApiError as e:
+        if e.status_code == 429:
+            print("🛑 RATE LIMIT: Sarvam TTS Streaming API")
+        else:
+            print(f"❌ Sarvam TTS Streaming Error ({e.status_code}): {e.body}")
+        return False
+
+    except Exception as e:
+        print(f"❌ Unexpected Sarvam TTS Streaming Error: {e}")
+        return False
