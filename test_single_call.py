@@ -26,29 +26,17 @@ def fetch_stock_data(phone_number: str) -> dict | None:
         return None
 
 
-def register_context(phone_number: str, client_name: str, stock_data: dict) -> bool:
-    """Register stock context on the server."""
+def initiate_call(phone_number: str, client_name: str, stock_data: dict) -> str | None:
+    """Atomically register context and initiate call via /initiate-call."""
     try:
         response = requests.post(
-            f"{BASE_URL}/register-call-context",
+            f"{BASE_URL}/initiate-call",
             json={
                 "phone_number": phone_number,
                 "client_name": client_name,
                 "stock_data": stock_data,
             },
         )
-        response.raise_for_status()
-        print(f"✅ Context registered for {client_name}")
-        return True
-    except Exception as e:
-        print(f"❌ Error registering context: {e}")
-        return False
-
-
-def initiate_call(phone_number: str) -> str | None:
-    """Initiate call via the /call endpoint."""
-    try:
-        response = requests.post(f"{BASE_URL}/call", data={"phone_number": phone_number})
         response.raise_for_status()
         data = response.json()
         if data.get("status") == "success":
@@ -79,10 +67,5 @@ if __name__ == "__main__":
     print(f"\n📊 Columns: {stock_data['columns']}")
     print(f"📊 Rows: {stock_data['rows']}\n")
 
-    # 2. Register context
-    if not register_context(phone_number, client_name, stock_data):
-        print("❌ Failed to register context. Exiting.")
-        exit(1)
-
-    # 3. Initiate call
-    initiate_call(phone_number)
+    # 2. Initiate call (context is registered atomically on the server)
+    initiate_call(phone_number, client_name, stock_data)

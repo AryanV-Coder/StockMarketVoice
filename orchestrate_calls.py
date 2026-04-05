@@ -4,9 +4,8 @@ Main orchestrator script to run on the server.
 Flow:
 1. Fetch all clients from the /clients/ endpoint
 2. For each client, retrieve their stock data from /clients/dummy_data/{phone_number}
-3. Initiate a call to each client one by one
-4. The stock data (columns + rows) is stored in memory and injected into the
-   conversation when the call's media stream connects.
+3. Atomically initiate a call + register context via /initiate-call
+   (Context is keyed by Twilio CallSid for perfect isolation)
 """
 
 import requests
@@ -51,10 +50,17 @@ def fetch_client_stock_data(phone_number: int) -> dict | None:
         return None
 
 
-def initiate_call(phone_number: str) -> str | None:
-    """Initiate a call to a client via the /call endpoint."""
+def initiate_call(phone_number: str, client_name: str, stock_data: dict) -> str | None:
+    """Atomically register context and initiate call via /initiate-call."""
     try:
-        response = requests.post(f"{BASE_URL}/call", data={"phone_number": phone_number})
+        response = requests.post(
+            f"{BASE_URL}/initiate-call",
+            json={
+                "phone_number": phone_number,
+                "client_name": client_name,
+                "stock_data": stock_data,
+            },
+        )
         response.raise_for_status()
         data = response.json()
         if data.get("status") == "success":
@@ -66,25 +72,6 @@ def initiate_call(phone_number: str) -> str | None:
     except Exception as e:
         print(f"❌ Error initiating call to {phone_number}: {e}")
         return None
-
-
-def register_call_context(phone_number: str, client_name: str, stock_data: dict) -> bool:
-    """Register the stock data context for an upcoming call on the server."""
-    try:
-        response = requests.post(
-            f"{BASE_URL}/register-call-context",
-            json={
-                "phone_number": phone_number,
-                "client_name": client_name,
-                "stock_data": stock_data,
-            },
-        )
-        response.raise_for_status()
-        print(f"✅ Registered call context for {client_name} ({phone_number})")
-        return True
-    except Exception as e:
-        print(f"❌ Error registering call context for {phone_number}: {e}")
-        return False
 
 
 def run():
@@ -113,19 +100,13 @@ def run():
             print(f"⚠ No stock data for {client_name}. Skipping.")
             continue
 
-        # 3. Register the stock context on the server before calling
-        registered = register_call_context(str(phone_number), client_name, stock_data)
-        if not registered:
-            print(f"⚠ Could not register context for {client_name}. Skipping.")
-            continue
-
-        # 4. Initiate the call
-        call_sid = initiate_call(str(phone_number))
+        # 3. Atomically initiate the call + register context
+        call_sid = initiate_call(str(phone_number), client_name, stock_data)
         if not call_sid:
             print(f"⚠ Call failed for {client_name}. Moving to next client.")
             continue
 
-        # # 5. Wait before calling the next client (avoid overlapping calls)
+        # # 4. Wait before calling the next client (avoid overlapping calls)
         # if i < len(clients):
         #     wait_time = 120  # seconds — adjust based on expected call duration
         #     print(f"⏳ Waiting {wait_time}s before next call...")

@@ -24,32 +24,39 @@ app.include_router(clients_router)
 # Per-call conversation history (keyed by CallSid)
 call_histories: dict[str, list[dict]] = {}
 
-# Per-phone-number call context: stores client_name + stock_data
-# Registered by orchestrate_calls.py before initiating each call
+# Per-CallSid context: stores client_name + stock_data
+# Keyed by Twilio CallSid for perfect isolation between simultaneous calls
 call_contexts: dict[str, dict] = {}
 
 
-# ─── Call Context Registration ───────────────────────────────────────────
+# ─── Call Initiation (Atomic: register context + call) ───────────────────
 
 
-class CallContextRequest(BaseModel):
+class InitiateCallRequest(BaseModel):
     phone_number: str
     client_name: str
     stock_data: dict  # {"columns": [...], "rows": [...]}
 
 
-@app.post("/register-call-context")
-async def register_call_context(request: CallContextRequest):
+@app.post("/initiate-call")
+async def initiate_call_with_context(request: InitiateCallRequest):
     """
-    Register stock data context for a phone number before calling them.
-    Called by orchestrate_calls.py before initiating each call.
+    Atomically initiate a call and register the stock context.
+    1. Calls Twilio → gets unique CallSid
+    2. Stores context keyed by that CallSid
+    This guarantees zero context mixup even with simultaneous calls.
     """
-    call_contexts[request.phone_number] = {
-        "client_name": request.client_name,
-        "stock_data": request.stock_data,
-    }
-    print(f"📋 Registered call context for {request.client_name} ({request.phone_number})")
-    return {"status": "success"}
+    try:
+        call_sid = make_call(request.phone_number)
+        call_contexts[call_sid] = {
+            "client_name": request.client_name,
+            "stock_data": request.stock_data,
+        }
+        print(f"📋 Registered context for {request.client_name} → CallSid: {call_sid}")
+        return {"status": "success", "call_sid": call_sid}
+    except Exception as e:
+        print(f"❌ Failed to initiate call to {request.phone_number}: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 # ─── Twilio Webhook ──────────────────────────────────────────────────────
@@ -154,18 +161,6 @@ async def media_stream(websocket: WebSocket):
         print("🔌 WebSocket disconnected")
 
 
-def _find_context_for_call() -> tuple[str, dict] | None:
-    """
-    Find the most recently registered call context.
-    Returns (phone_number, context_dict) or None.
-    """
-    if not call_contexts:
-        return None
-    # Return the last registered context (most recent call)
-    phone_number = list(call_contexts.keys())[-1]
-    return phone_number, call_contexts[phone_number]
-
-
 def _build_stock_data_message(client_name: str, stock_data: dict) -> str:
     """Format the stock data into a readable message for the LLM."""
     columns = stock_data["columns"]
@@ -187,26 +182,23 @@ async def _bot_greeting(
     websocket: WebSocket,
 ):
     """
-    Bot speaks first: look up stock context for this call,
+    Bot speaks first: look up stock context by CallSid (perfect isolation),
     inject it into chat history, get LLM greeting, and play it via TTS.
     """
     vad.bot_is_speaking = True
 
     try:
-        # Find the context for this call
-        context_result = _find_context_for_call()
+        # Look up context by this call's unique CallSid
+        context = call_contexts.pop(call_sid, None)
 
-        if context_result is None:
-            print("⚠ No call context found, using generic greeting")
+        if context is None:
+            print(f"⚠ No call context found for CallSid {call_sid}, using generic greeting")
             stock_message = "No stock data available for this client."
             client_name = "Customer"
         else:
-            phone_number, context = context_result
             client_name = context["client_name"]
             stock_data = context["stock_data"]
             stock_message = _build_stock_data_message(client_name, stock_data)
-            # Remove context after use so it doesn't leak to the next call
-            del call_contexts[phone_number]
 
         print(f"📊 Injecting stock data for {client_name} into conversation")
 
@@ -345,20 +337,6 @@ async def serve_audio(filename: str):
 
 
 # ─── API Endpoints ───────────────────────────────────────────────────────
-
-
-@app.post("/call")
-async def initiate_call(phone_number: str = Form(...)):
-    """
-    Trigger an outbound call to a client.
-    POST /call with form data: phone_number=9876543210
-    """
-    try:
-        call_sid = make_call(phone_number)
-        return {"status": "success", "call_sid": call_sid}
-    except Exception as e:
-        print(f"❌ Failed to initiate call: {e}")
-        return {"status": "error", "message": str(e)}
 
 @app.get("/start-server")
 def start_server():
