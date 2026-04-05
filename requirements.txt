@@ -10,3 +10,4 @@ numpy<2
 torch
 torchaudio
 silero-vad
+psycopg2
