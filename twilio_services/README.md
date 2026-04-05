@@ -11,4 +11,4 @@ This service provides the fundamental entry point to the application process loo
   - Generates the initial POST execution pointing the initiated call specifically back to the `<SERVER_URL>/voice` webhook endpoint.
   - Uses the Twilio Python SDK.
   - Securely maps initialization parameters to the keys configured within `.env` logic.
-  - Returns the persistent Twilio `CallSid` necessary for tracing session history tracking inside `main.py`.
+  - Returns the persistent Twilio `CallSid` necessary for tracing session history tracking inside `app.py`.

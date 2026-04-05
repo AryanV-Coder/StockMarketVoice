@@ -2,7 +2,7 @@
 
 ## Current Project State
 
-The project is a **fresh scaffold** — all service directories (`twilio_services/`, `sarvam_services/`, `groq_services/`) contain only README placeholders. `main.py` has a single import (`from fastapi import FastAPI`) with no app instance or routes. You have the right dependencies listed in `requirements.txt`.
+The project is a **fresh scaffold** — all service directories (`twilio_services/`, `sarvam_services/`, `groq_services/`) contain only README placeholders. `app.py` has a single import (`from fastapi import FastAPI`) with no app instance or routes. You have the right dependencies listed in `requirements.txt`.
 
 ---
 

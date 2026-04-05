@@ -25,7 +25,7 @@ app.include_router(clients_router)
 call_histories: dict[str, list[dict]] = {}
 
 # Per-phone-number call context: stores client_name + stock_data
-# Registered by run_calls.py before initiating each call
+# Registered by orchestrate_calls.py before initiating each call
 call_contexts: dict[str, dict] = {}
 
 
@@ -42,7 +42,7 @@ class CallContextRequest(BaseModel):
 async def register_call_context(request: CallContextRequest):
     """
     Register stock data context for a phone number before calling them.
-    Called by run_calls.py before initiating each call.
+    Called by orchestrate_calls.py before initiating each call.
     """
     call_contexts[request.phone_number] = {
         "client_name": request.client_name,

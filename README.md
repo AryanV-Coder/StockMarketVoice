@@ -1,35 +1,41 @@
 # StockMarketVoice
 
-A headless, modular voice AI service that initiates automated outbound calls to users. The system leverages Twilio Media Streams, Sarvam AI, Groq LLM, and Silero VAD to deliver a real-time conversational pipeline over automated voice calls.
+A headless, modular voice AI service that initiates automated outbound calls to users. The system leverages Twilio Media Streams, Sarvam AI, Groq LLM, Silero VAD, and Supabase to deliver a real-time conversational pipeline over automated voice calls.
 
 ## Features
 
-- **Automated Outbound Calling**: Trigger outbound calls using the `/call` endpoint.
+- **Automated Outbound Calling**: Trigger outbound calls seamlessly via local orchestration scripts.
+- **Dynamic Data Injection**: The system securely pulls real-time user stock data (Supabase PostgreSQL) directly into the AI's context before the call starts.
+- **Bot-Speaks-First Flow**: The system proactively initiates the call, greeting the user by name and verbally summarizing their latest stock purchases.
+- **Multi-Lingual Adaptability**: The bot speaks English by default, seamlessly handles Hinglish inputs (while keeping numbers logically in English), and can dynamically switch to Hindi upon request.
 - **Real-Time Voice Streaming**: Utilizes Twilio Media Streams (WebSocket) for bidirectional, low-latency audio transmission.
 - **Voice Activity Detection (VAD)**: Real-time speech start/end detection using Silero ONNX to efficiently chunk audio.
 - **Advanced STT & TTS**: High-quality Indian context speech-to-text and text-to-speech rendering via the Sarvam AI API.
-- **Intelligent LLM Engine**: Conversational AI responses are generated using the Groq API for near-instant responses.
-- **Barge-In Ready**: The core pipeline is architected to allow the inclusion of user interruption logic in future updates.
+- **Intelligent LLM Engine**: Conversational AI responses are generated using the Groq API (Llama 3.3 70B) for near-instant broker-like responses.
 
 ## System Architecture
 
-1. **Call Initiation**: System POSTs to Twilio, initiating an outbound call.
-2. **Setup**: Call connects; Twilio calls the `/voice` webhook and is instructed to `Connect->Stream` to our `/media-stream` WebSocket endpoint.
-3. **Audio Handling**: Twilio streams raw μ-law 8kHz audio. We convert to 16kHz for Voice Activity Detection and speech capture.
-4. **VAD Triggered Generation**: Upon detecting speech completion, the audio chunk is transcribed to text (Sarvam STT) and processed by the LLM (Groq).
-5. **Streaming Playback**: The generated LLM text is continuously streamed to Sarvam TTS, converted into μ-law 8kHz audio, and immediately streamed back over the WebSocket to Twilio for near-instant playback.
+1. **Context Registration**: A calling script fetches client and stock data from Supabase directly via the server endpoints and registers it into temporary memory.
+2. **Call Initiation**: System POSTs to Twilio, initiating an outbound call.
+3. **Setup & Bot Greeting**: Call connects; Twilio calls the `/voice` webhook and is instructed to `Connect->Stream` to our `/media-stream` WebSocket endpoint. The bot processes the registered stock context, generates a greeting, and speaks FIRST.
+4. **Audio Handling**: Twilio streams raw μ-law 8kHz audio. We convert to 16kHz for Voice Activity Detection and speech capture.
+5. **VAD Triggered Generation**: Upon detecting user speech completion, the audio chunk is transcribed to text (Sarvam STT) and processed by the LLM (Groq), keeping full conversational and stock context intact.
+6. **Streaming Playback**: The generated LLM text is continuously streamed to Sarvam TTS, converted into μ-law 8kHz audio, and immediately streamed back over the WebSocket to Twilio for near-instant playback.
 
 ## Project Structure
 
-- `main.py` - Core FastAPI app initializing routes and orchestrating the WebSocket pipeline.
+- `app.py` - Core FastAPI app initializing routes, managing context registrations, and orchestrating the WebSocket pipeline.
+- `orchestrate_calls.py` - Main automation orchestrator. Automatically loops through all clients, registers their context, and initiates calls.
+- `test_single_call.py` - Direct CLI script to manually input a phone number and client name to test individual deployments.
 - `config.py` - Environment configuration layer.
 - `audio_utils.py` - Core audio format conversion (μ-law ↔ PCM) functions.
 - `vad_service.py` - Manages Voice Activity Detection state using Silero.
-- `test_call.py` - Utility testing script to quickly trigger the outbound process.
 - `barge_in.py` - Optional design and logic notes for implementing barge-in functionality.
-- `groq_services/` - LLM interaction code.
+- `groq_services/` - LLM interaction code and Master System Prompts.
 - `sarvam_services/` - STT and TTS handlers.
 - `twilio_services/` - Outbound call management.
+- `routers/` - Contains domain-specific FastAPI endpoints (like the `clients.py` module connecting to Supabase).
+- `supabase/` - Database mapping and native connection layer via explicit `psycopg2` configurations.
 
 ## Setup & Installation
 
@@ -38,6 +44,7 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - Twilio Account + Phone Number
 - Sarvam AI API Key
 - Groq AI API Key
+- PostgreSQL / Supabase Credentials
 
 ### Installation
 
@@ -52,7 +59,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Create the `.env` file from the supplied keys. Populate the variables as needed:
+3. Create the `.env` file and populate the variables:
 ```env
 TWILIO_ACCOUNT_SID=your_twilio_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
@@ -60,7 +67,13 @@ TWILIO_PHONE_NUMBER=your_twilio_phone_number
 SARVAM_API_KEY=your_sarvam_api_key
 GROQ_API_KEY=your_groq_api_key
 SERVER_URL=https://your-ngrok-domain.ngrok-free.app
-TEST_PHONE_NUMBER=your_personal_test_phone_number
+
+# PostgreSQL
+host=supabase.host.com
+database=postgres
+user=postgres
+password=your_password
+port=5432
 ```
 
 ### Running the App
@@ -73,10 +86,15 @@ Update your `SERVER_URL` in `.env` with the HTTPS domain Ngrok generates.
 
 2. Start the FastAPI service:
 ```bash
-uvicorn main:app --reload --port 8000
+uvicorn app:app --reload --port 8000
 ```
 
-3. Initiate a Test Call via the provided test script:
+3. Start Automated Calls:
+Choose from one of your running scripts to perform testing or mass calling:
 ```bash
-python test_call.py
+# To test a single manual phone number
+python test_single_call.py
+
+# To automatically fetch all clients from the DB and call them one-by-one
+python orchestrate_calls.py
 ```

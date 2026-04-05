@@ -10,7 +10,7 @@ Because the service requires low-latency Indian language processing, Sarvam prov
 ### `sarvam_stt.py`
 - Exposes `transcribe_audio(audio_filepath: str) -> str`.
 - Currently operates as a non-streaming REST operation.
-- The `main.py` pipeline utilizes `vad_service.py` to identify speech boundary windows, saves that audio payload as a temporary WAV file, and posts it to this module to retrieve an accurate text transaction via the `saaras:v3` model.
+- The `app.py` pipeline utilizes `vad_service.py` to identify speech boundary windows, saves that audio payload as a temporary WAV file, and posts it to this module to retrieve an accurate text transaction via the `saaras:v3` model.
 
 ### `sarvam_tts.py`
 - Operates primarily using the `stream_tts` method connecting to the `AsyncSarvamAI` endpoint.

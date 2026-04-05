@@ -15,7 +15,7 @@ How to implement:
    d. Start accumulating the new utterance from VAD
 3. Process the new utterance through the normal STT → LLM → TTS pipeline
 
-Integration points in main.py:
+Integration points in app.py:
 - In the "media" event handler, instead of `continue` when bot_is_speaking,
   run VAD and check for barge-in
 - In _process_utterance(), make the TTS streaming cancellable
