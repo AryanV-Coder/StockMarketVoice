@@ -5,14 +5,14 @@ import os
 # Load environment variables from .env
 load_dotenv()
 
-# Method 1: Direct PostgreSQL connection (if you have direct DB credentials)
+# Direct PostgreSQL connection (if you have direct DB credentials)
 def connect_postgres():
     """Connect directly to PostgreSQL database"""
     USER = os.getenv("user")
     PASSWORD = os.getenv("password")
     HOST = os.getenv("host")
     PORT = os.getenv("port")
-    DBNAME = os.getenv("dbname")
+    DATABASE = os.getenv("database")
 
     try:
         connection = psycopg2.connect(
@@ -20,7 +20,7 @@ def connect_postgres():
             password=PASSWORD,
             host=HOST,
             port=PORT,
-            database=DBNAME
+            database=DATABASE
         )
         print("✅ PostgreSQL connection successful!")
         

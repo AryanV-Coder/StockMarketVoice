@@ -11,14 +11,45 @@ from audio_utils import decode_twilio_media, save_pcm_as_wav
 from vad_service import VADProcessor
 from sarvam_services.sarvam_stt import transcribe_audio
 from sarvam_services.sarvam_tts import stream_tts, AUDIO_DIR
-from groq_services.groq_llm import chat
+from groq_services.groq_llm import chat, SYSTEM_PROMPT
 from twilio_services.twilio_call import make_call
+from routers.clients import router as clients_router
+from pydantic import BaseModel
 
 
 app = FastAPI(title="StockMarketVoice")
 
+app.include_router(clients_router)
+
 # Per-call conversation history (keyed by CallSid)
 call_histories: dict[str, list[dict]] = {}
+
+# Per-phone-number call context: stores client_name + stock_data
+# Registered by run_calls.py before initiating each call
+call_contexts: dict[str, dict] = {}
+
+
+# ─── Call Context Registration ───────────────────────────────────────────
+
+
+class CallContextRequest(BaseModel):
+    phone_number: str
+    client_name: str
+    stock_data: dict  # {"columns": [...], "rows": [...]}
+
+
+@app.post("/register-call-context")
+async def register_call_context(request: CallContextRequest):
+    """
+    Register stock data context for a phone number before calling them.
+    Called by run_calls.py before initiating each call.
+    """
+    call_contexts[request.phone_number] = {
+        "client_name": request.client_name,
+        "stock_data": request.stock_data,
+    }
+    print(f"📋 Registered call context for {request.client_name} ({request.phone_number})")
+    return {"status": "success"}
 
 
 # ─── Twilio Webhook ──────────────────────────────────────────────────────
@@ -47,7 +78,8 @@ async def media_stream(websocket: WebSocket):
     """
     Bidirectional WebSocket handler for Twilio Media Streams.
 
-    Pipeline per utterance:
+    Pipeline:
+    0. On stream start → look up stock context → LLM generates greeting → TTS plays it
     1. Receive μ-law audio chunks from Twilio
     2. Convert to PCM 16kHz → feed to Silero VAD
     3. VAD detects end of speech → save as WAV → Sarvam STT
@@ -74,6 +106,12 @@ async def media_stream(websocket: WebSocket):
                 stream_sid = data["streamSid"]
                 call_sid = data.get("start", {}).get("callSid", "unknown")
                 print(f"▶ Stream started | streamSid={stream_sid} | callSid={call_sid}")
+
+                # --- Bot Speaks First ---
+                # Find the phone number this call is going to and inject stock context
+                asyncio.create_task(
+                    _bot_greeting(stream_sid, call_sid, vad, websocket)
+                )
 
             elif event == "media":
                 if vad.bot_is_speaking:
@@ -116,6 +154,116 @@ async def media_stream(websocket: WebSocket):
         print("🔌 WebSocket disconnected")
 
 
+def _find_context_for_call() -> tuple[str, dict] | None:
+    """
+    Find the most recently registered call context.
+    Returns (phone_number, context_dict) or None.
+    """
+    if not call_contexts:
+        return None
+    # Return the last registered context (most recent call)
+    phone_number = list(call_contexts.keys())[-1]
+    return phone_number, call_contexts[phone_number]
+
+
+def _build_stock_data_message(client_name: str, stock_data: dict) -> str:
+    """Format the stock data into a readable message for the LLM."""
+    columns = stock_data["columns"]
+    rows = stock_data["rows"]
+
+    message = f"Client Name: {client_name}\n"
+    message += f"Columns: {', '.join(columns)}\n"
+    message += "Rows:\n"
+    for row in rows:
+        message += f"  {row}\n"
+
+    return message
+
+
+async def _bot_greeting(
+    stream_sid: str,
+    call_sid: str,
+    vad: VADProcessor,
+    websocket: WebSocket,
+):
+    """
+    Bot speaks first: look up stock context for this call,
+    inject it into chat history, get LLM greeting, and play it via TTS.
+    """
+    vad.bot_is_speaking = True
+
+    try:
+        # Find the context for this call
+        context_result = _find_context_for_call()
+
+        if context_result is None:
+            print("⚠ No call context found, using generic greeting")
+            stock_message = "No stock data available for this client."
+            client_name = "Customer"
+        else:
+            phone_number, context = context_result
+            client_name = context["client_name"]
+            stock_data = context["stock_data"]
+            stock_message = _build_stock_data_message(client_name, stock_data)
+            # Remove context after use so it doesn't leak to the next call
+            del call_contexts[phone_number]
+
+        print(f"📊 Injecting stock data for {client_name} into conversation")
+
+        # Initialize chat history with system prompt + stock data as first user message
+        if call_sid not in call_histories:
+            call_histories[call_sid] = []
+
+        history = call_histories[call_sid]
+        history.append({"role": "system", "content": SYSTEM_PROMPT})
+        history.append({
+            "role": "user",
+            "content": f"Here is the stock data for today's call:\n\n{stock_message}"
+        })
+
+        # Get the LLM's opening greeting
+        try:
+            from groq import Groq
+            groq_client = Groq(api_key=config.GROQ_API_KEY)
+            response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=history,
+                stream=False,
+                temperature=0.7,
+                max_tokens=200,
+            )
+            ai_greeting = response.choices[0].message.content
+            history.append({"role": "assistant", "content": ai_greeting})
+            print(f"✅ [Bot Greeting] {ai_greeting}")
+        except Exception as e:
+            print(f"❌ LLM greeting error: {e}")
+            ai_greeting = f"Hello {client_name}, this is Jeevan from your brokerage. I have your stock update for today."
+
+        # Stream TTS greeting to Twilio
+        async def send_audio_chunk(audio_bytes: bytes):
+            payload = base64.b64encode(audio_bytes).decode("utf-8")
+            media_message = {
+                "event": "media",
+                "streamSid": stream_sid,
+                "media": {"payload": payload},
+            }
+            await websocket.send_json(media_message)
+
+        await stream_tts(ai_greeting, send_audio_chunk)
+
+        # Send mark event to know when Twilio finishes playing
+        mark_message = {
+            "event": "mark",
+            "streamSid": stream_sid,
+            "mark": {"name": "bot_speech_done"},
+        }
+        await websocket.send_json(mark_message)
+
+    except Exception as e:
+        print(f"🔥 Error in bot greeting: {e}")
+        vad.bot_is_speaking = False
+
+
 async def _process_utterance(
     utterance_pcm: bytes,
     stream_sid: str,
@@ -147,13 +295,13 @@ async def _process_utterance(
             return
 
         # 3. Get AI response from Groq LLM (non-streaming)
+        #    Chat history already has system prompt + stock data from the greeting phase
         if call_sid not in call_histories:
             call_histories[call_sid] = []
         ai_reply = chat(text, call_histories[call_sid])
         print(f"✅ [AI Reply] {ai_reply}")
 
         # 4. Stream TTS audio back to Twilio
-        #    Sarvam TTS is configured to output mulaw 8kHz — exactly what Twilio expects
         async def send_audio_chunk(audio_bytes: bytes):
             """Callback: send raw mulaw audio chunk to Twilio."""
             payload = base64.b64encode(audio_bytes).decode("utf-8")
@@ -211,3 +359,8 @@ async def initiate_call(phone_number: str = Form(...)):
     except Exception as e:
         print(f"❌ Failed to initiate call: {e}")
         return {"status": "error", "message": str(e)}
+
+@app.get("/start-server")
+def start_server():
+    print("✅ Server started successfully")
+    return {"status": "success", "message": "Server started successfully"}
