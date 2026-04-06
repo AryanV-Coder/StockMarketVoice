@@ -15,7 +15,7 @@ AUDIO_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "audio_file
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 
-def text_to_speech(text: str, language: str = "hi-IN", speaker: str = "shubh") -> str | None:
+def text_to_speech(text: str, language: str = "en-IN", speaker: str = "shubh") -> str | None:
     """
     Convert text to speech using Sarvam AI (non-streaming REST API).
     Saves the audio as a WAV file and returns the filename.
@@ -60,7 +60,7 @@ def text_to_speech(text: str, language: str = "hi-IN", speaker: str = "shubh") -
 async def stream_tts(
     text: str,
     on_audio_chunk: Callable[[bytes], Awaitable[None]],
-    language: str = "hi-IN",
+    language: str = "en-IN",
     speaker: str = "shubh",
 ) -> bool:
     """
