@@ -178,3 +178,15 @@ body {
     .card { padding: 24px 16px; }
     .tab-btn { padding: 8px 16px; font-size: 13px; }
 }
+
+/* Desktop sizing upscaling */
+@media (min-width: 768px) {
+    .container { max-width: 650px; padding: 40px; }
+    .card { padding: 48px 40px; }
+    .card h2 { font-size: 24px; margin-bottom: 32px; }
+    .tab-btn { font-size: 16px; padding: 12px 32px; border-radius: 30px; }
+    .form-group { margin-bottom: 24px; }
+    .form-group label { font-size: 15px; margin-bottom: 10px; }
+    .form-group input { font-size: 18px; padding: 16px 20px; }
+    .primary-btn { font-size: 18px; padding: 18px; }
+}

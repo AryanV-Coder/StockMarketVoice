@@ -1,7 +1,7 @@
 const API_BASE_URL = process.env.SERVER_URL || 'http://127.0.0.1:8000';
 
 // Tab switching logic
-function switchTab(tabId) {
+window.switchTab = function(tabId) {
     // Update buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -51,7 +51,7 @@ document.getElementById('trigger-all-btn').addEventListener('click', async (e) =
         showToast('Failed to connect to server', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Trigger All Calls';
+        btn.textContent = 'Initiate Calls';
     }
 });
 
