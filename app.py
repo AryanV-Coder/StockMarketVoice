@@ -13,6 +13,7 @@ from sarvam_services.sarvam_stt import transcribe_audio
 from sarvam_services.sarvam_tts import stream_tts, AUDIO_DIR
 from groq_services.groq_llm import chat, SYSTEM_PROMPT
 from twilio_services.twilio_call import make_call
+from fastapi.middleware.cors import CORSMiddleware
 from routers.clients import router as clients_router
 from routers.orchestrate import router as orchestrate_router
 from routers.test_call import router as test_call_router
@@ -20,6 +21,14 @@ from pydantic import BaseModel
 
 
 app = FastAPI(title="StockMarketVoice")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(clients_router)
 app.include_router(orchestrate_router)
