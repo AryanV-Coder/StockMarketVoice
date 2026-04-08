@@ -12,6 +12,7 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - **Voice Activity Detection (VAD)**: Real-time speech start/end detection using Silero ONNX to efficiently chunk audio.
 - **Advanced STT & TTS**: High-quality Indian context speech-to-text and text-to-speech rendering via the Sarvam AI API.
 - **Intelligent LLM Engine**: Conversational AI responses are generated using the Groq API (Llama 3.3 70B) for near-instant broker-like responses.
+- **Web Dashboard for Call Management**: A responsive, Vite-powered frontend UI to effortlessly test individual calls and trigger batch outbound orchestrations without resorting to the CLI.
 
 ## System Architecture
 
@@ -27,6 +28,7 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - `app.py` - Core FastAPI app initializing routes, managing context registrations, and orchestrating the WebSocket pipeline.
 - `orchestrate_calls.py` - Main automation orchestrator. Automatically loops through all clients, registers their context, and initiates calls.
 - `test_single_call.py` - Direct CLI script to manually input a phone number and client name to test individual deployments.
+- `frontend/` - Responsive web dashboard for testing single calls and initiating batch orchestrations over the web.
 - `config.py` - Environment configuration layer.
 - `audio_utils.py` - Core audio format conversion (μ-law ↔ PCM) functions.
 - `vad_service.py` - Manages Voice Activity Detection state using Silero.
@@ -90,11 +92,23 @@ uvicorn app:app --reload --port 8000
 ```
 
 3. Start Automated Calls:
-Choose from one of your running scripts to perform testing or mass calling:
+You can trigger calls either via the command line or using the Web Dashboard.
+
+**Option A: Using the CLI**
 ```bash
 # To test a single manual phone number
 python test_single_call.py
 
 # To automatically fetch all clients from the DB and call them one-by-one
 python orchestrate_calls.py
+```
+
+**Option B: Using the Web Dashboard**
+Open a new terminal and navigate to the frontend directory:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Navigate to the provided localhost URL to use the web interface.
 ```
