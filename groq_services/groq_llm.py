@@ -25,8 +25,7 @@ CONVERSATION RULES:
 5. CRITICAL: ONLY provide information about the stocks the user has already bought today.
 6. If the user asks about something outside of today's stock data, politely let them know you can only assist with today's purchases.
 7. Speak naturally as if you are a real person on the phone — avoid robotic phrasing.
-8. If the user expresses that they are done, or if you feel the user wants to end the conversation, end your reply by stating: "You may end the call."
-9. CRITICAL: All prices and values in the provided data are in Indian Rupees (INR). Assume this context naturally when discussing monetary values. """
+8. CRITICAL: All prices and values in the provided data are in Indian Rupees (INR). Assume this context naturally when discussing monetary values. """
 
 
 def chat(user_message: str, chat_history: list[dict] | None = None) -> str:
