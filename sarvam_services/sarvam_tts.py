@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import uuid
@@ -62,6 +63,7 @@ async def stream_tts(
     on_audio_chunk: Callable[[bytes], Awaitable[None]],
     language: str = "en-IN",
     speaker: str = "shubh",
+    cancel_event: "asyncio.Event | None" = None,
 ) -> bool:
     """
     Stream text-to-speech using Sarvam AI WebSocket API.
@@ -72,9 +74,10 @@ async def stream_tts(
         on_audio_chunk: Async callback receiving raw audio bytes for each chunk.
         language: Target language code.
         speaker: Speaker voice name.
+        cancel_event: If set, TTS streaming is aborted immediately (used by barge-in).
 
     Returns:
-        True if successful, False on error.
+        True if successful, False on error or cancellation.
     """
     async_client = AsyncSarvamAI(api_subscription_key=config.SARVAM_API_KEY)
 
@@ -93,7 +96,14 @@ async def stream_tts(
             await ws.flush()
 
             chunk_count = 0
+            cancelled = False
             async for message in ws:
+                # Check for barge-in cancellation
+                if cancel_event is not None and cancel_event.is_set():
+                    print("🛑 [Sarvam TTS] Cancelled by barge-in")
+                    cancelled = True
+                    break
+
                 if isinstance(message, AudioOutput):
                     chunk_count += 1
                     audio_bytes = base64.b64decode(message.data.audio)
@@ -102,6 +112,10 @@ async def stream_tts(
                 elif isinstance(message, EventResponse):
                     if message.data.event_type == "final":
                         break
+
+            if cancelled:
+                print(f"🛑 [Sarvam TTS Streaming] Aborted after {chunk_count} chunks")
+                return False
 
             print(f"✅ [Sarvam TTS Streaming] Sent {chunk_count} chunks")
             return True

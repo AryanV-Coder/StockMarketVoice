@@ -46,8 +46,8 @@ class VADProcessor:
             None if speech is ongoing or silence.
             bytes (PCM 16kHz) when speech has ended — the complete utterance.
         """
-        if self.bot_is_speaking:
-            return None
+        # Note: bot_is_speaking check is handled by app.py, which routes
+        # audio to BargeInDetector during bot speech instead of this processor.
 
         # Accumulate partial window data
         self._vad_buffer = np.concatenate([self._vad_buffer, float32])
