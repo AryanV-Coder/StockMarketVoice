@@ -351,9 +351,9 @@ async def _process_utterance(
         tmp_file.close()
 
         # 2. Transcribe with Sarvam STT (REST, non-streaming)
-        text = transcribe_audio(tmp_file.name)
+        text, detected_lang = transcribe_audio(tmp_file.name)
         os.remove(tmp_file.name)
-        print(f"✅ [Transcribed] {text}")
+        print(f"✅ [Transcribed] {text} (Language: {detected_lang})")
 
         if not text or text.strip() == "":
             print("⚠ Empty transcription, skipping")
@@ -378,7 +378,7 @@ async def _process_utterance(
             }
             await websocket.send_json(media_message)
 
-        success = await stream_tts(ai_reply, send_audio_chunk, cancel_event=cancel_event)
+        success = await stream_tts(ai_reply, send_audio_chunk, language=detected_lang, cancel_event=cancel_event)
 
         # 5. Only send mark if TTS wasn't cancelled (barge-in handles its own reset)
         if success:
