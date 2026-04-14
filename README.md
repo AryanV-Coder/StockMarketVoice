@@ -12,6 +12,8 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - **Voice Activity Detection (VAD)**: Real-time speech start/end detection using Silero ONNX to efficiently chunk audio.
 - **Advanced STT & TTS**: High-quality Indian context speech-to-text and text-to-speech rendering via the Sarvam AI API.
 - **Intelligent LLM Engine**: Conversational AI responses are generated using the Groq API (Llama 3.3 70B) for near-instant broker-like responses.
+- **Real-Time Barge-In Support**: Allows users to interrupt the bot mid-speech. The system detects sustained user speech (300ms threshold), immediately stops the bot's audio playback (Twilio 'clear'), and switches to listening mode.
+- **Graceful Data Failover**: Robust error handling for cases where client stock data is missing or malformed. Instead of crashing, the system detects the anomaly and provides a polite conversational fallback explaining that record data is currently unavailable.
 - **Web Dashboard for Call Management**: A responsive, Vite-powered frontend UI to effortlessly test individual calls and trigger batch outbound orchestrations without resorting to the CLI.
 
 ## System Architecture
@@ -32,7 +34,7 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - `config.py` - Environment configuration layer.
 - `audio_utils.py` - Core audio format conversion (μ-law ↔ PCM) functions.
 - `vad_service.py` - Manages Voice Activity Detection state using Silero.
-- `barge_in.py` - Optional design and logic notes for implementing barge-in functionality.
+- `barge_in.py` - Core logic for monitoring and handling user interruptions during bot speech.
 - `groq_services/` - LLM interaction code and Master System Prompts.
 - `sarvam_services/` - STT and TTS handlers.
 - `twilio_services/` - Outbound call management.
