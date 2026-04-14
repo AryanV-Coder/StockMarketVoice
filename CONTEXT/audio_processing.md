@@ -110,11 +110,11 @@ while len(self._vad_buffer) >= WINDOW_SIZE:  # WINDOW_SIZE = 512
 
 **File:** `sarvam_services/sarvam_tts.py` → `stream_tts()`
 
-Sarvam TTS is configured to output **μ-law 8kHz** directly — the exact format Twilio expects. This eliminates any server-side re-encoding:
+Sarvam TTS is configured to output **μ-law 8kHz** directly — the exact format Twilio expects. The `target_language_code` is dynamically passed from the STT detection to ensure language consistency:
 
 ```python
 await ws.configure(
-    target_language_code="hi-IN",
+    target_language_code=language, # Dynamic from STT (e.g., 'en-IN', 'hi-IN')
     speaker="shubh",
     output_audio_codec="mulaw",   # ← Matches Twilio's expected format
     speech_sample_rate=8000,       # ← Matches Twilio's expected rate

@@ -7,10 +7,10 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 - **Automated Outbound Calling**: Trigger outbound calls seamlessly via local orchestration scripts.
 - **Dynamic Data Injection**: The system securely pulls real-time user stock data (Supabase PostgreSQL) directly into the AI's context before the call starts.
 - **Bot-Speaks-First Flow**: The system proactively initiates the call, greeting the user by name and verbally summarizing their latest stock purchases.
-- **Multi-Lingual Adaptability**: The bot speaks English by default, seamlessly handles Hinglish inputs (while keeping numbers logically in English), and can dynamically switch to Hindi upon request.
+- **Multi-Lingual Adaptability**: Supports English, Hindi, and Hinglish. The system now automatically detects the user's spoken language via STT and forwards the language code to the TTS engine to ensure a consistent conversational language.
 - **Real-Time Voice Streaming**: Utilizes Twilio Media Streams (WebSocket) for bidirectional, low-latency audio transmission.
 - **Voice Activity Detection (VAD)**: Real-time speech start/end detection using Silero ONNX to efficiently chunk audio.
-- **Advanced STT & TTS**: High-quality Indian context speech-to-text and text-to-speech rendering via the Sarvam AI API.
+- **Advanced STT & TTS**: High-quality Indian context speech-to-text and text-to-speech rendering via the Sarvam AI API, with integrated language cross-pollination.
 - **Intelligent LLM Engine**: Conversational AI responses are generated using the Groq API (Llama 3.3 70B) for near-instant broker-like responses.
 - **Real-Time Barge-In Support**: Allows users to interrupt the bot mid-speech. The system detects sustained user speech (300ms threshold), immediately stops the bot's audio playback (Twilio 'clear'), and switches to listening mode.
 - **Graceful Data Failover**: Robust error handling for cases where client stock data is missing or malformed. Instead of crashing, the system detects the anomaly and provides a polite conversational fallback explaining that record data is currently unavailable.
@@ -22,8 +22,8 @@ A headless, modular voice AI service that initiates automated outbound calls to 
 2. **Call Initiation**: System POSTs to Twilio, initiating an outbound call.
 3. **Setup & Bot Greeting**: Call connects; Twilio calls the `/voice` webhook and is instructed to `Connect->Stream` to our `/media-stream` WebSocket endpoint. The bot processes the registered stock context, generates a greeting, and speaks FIRST.
 4. **Audio Handling**: Twilio streams raw μ-law 8kHz audio. We convert to 16kHz for Voice Activity Detection and speech capture.
-5. **VAD Triggered Generation**: Upon detecting user speech completion, the audio chunk is transcribed to text (Sarvam STT) and processed by the LLM (Groq), keeping full conversational and stock context intact.
-6. **Streaming Playback**: The generated LLM text is continuously streamed to Sarvam TTS, converted into μ-law 8kHz audio, and immediately streamed back over the WebSocket to Twilio for near-instant playback.
+5. **VAD Triggered Generation**: Upon detecting user speech completion, the audio chunk is transcribed to text (Sarvam STT). The STT engine detects the language code (e.g., Hindi, English), which is then passed to the LLM (Groq) and subsequently used by the TTS engine (Sarvam) to maintain language consistency.
+6. **Streaming Playback**: The generated LLM text is continuously streamed to Sarvam TTS using the detected user language, converted into μ-law 8kHz audio, and immediately streamed back over the WebSocket to Twilio for near-instant playback.
 
 ## Project Structure
 

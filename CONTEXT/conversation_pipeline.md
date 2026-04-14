@@ -95,9 +95,10 @@ The function returns all three formats simultaneously: `pcm_8k`, `pcm_16k`, `flo
 1. The accumulated PCM utterance is wrapped into a WAV file in-memory (`save_pcm_as_wav`).
 2. Saved to a temporary file on disk.
 3. Sent to **Sarvam AI** (`saaras:v3` model) via REST API.
-4. Sarvam auto-detects the spoken language (Hindi, English, Hinglish, etc.) and returns the transcript.
-5. The temp file is deleted after transcription.
-6. Empty transcriptions are silently skipped.
+4. Sarvam auto-detects the spoken language (Hindi, English, Hinglish, Bengali, etc.).
+5. The function returns both the **transcript** and the **detected language code** (e.g., `hi-IN` or `en-IN`).
+6. The temp file is deleted after transcription.
+7. Empty transcriptions are silently skipped.
 
 ### Phase 5: LLM Response Generation
 
@@ -114,10 +115,11 @@ The function returns all three formats simultaneously: `pcm_8k`, `pcm_16k`, `flo
 **File:** `sarvam_services/sarvam_tts.py` → `stream_tts()`
 
 1. Opens an **async WebSocket** connection to Sarvam AI (`bulbul:v3` model).
-2. Configured with: `target_language_code="hi-IN"`, `speaker="shubh"`, `output_audio_codec="mulaw"`, `speech_sample_rate=8000`.
-3. The LLM's reply text is sent to Sarvam via `ws.convert(text)` and `ws.flush()`.
-4. Audio chunks are received as `AudioOutput` messages, each containing base64-encoded μ-law audio.
-5. Each chunk is decoded and passed to the `on_audio_chunk` callback.
+2. The pipeline forwards the **detected language code** from Phase 4 to `stream_tts()`. This ensures that if the user speaks in Hindi, the bot's response is rendered with the proper Hindi TTS engine and intonation.
+3. Configured with: `target_language_code` (dynamic from STT), `speaker="shubh"`, `output_audio_codec="mulaw"`, `speech_sample_rate=8000`.
+4. The LLM's reply text is sent to Sarvam via `ws.convert(text)` and `ws.flush()`.
+5. Audio chunks are received as `AudioOutput` messages, each containing base64-encoded μ-law audio.
+6. Each chunk is decoded and passed to the `on_audio_chunk` callback.
 
 ### Phase 7: Sending Audio Back to Twilio
 

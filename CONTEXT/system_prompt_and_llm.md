@@ -58,16 +58,23 @@ Voice calls have limited attention span. Reading 20 stocks sequentially would ta
 
 ### Language Adaptation Rules
 
-The system supports three language modes, detected dynamically:
+The system supports three primary language modes, with **automated language code forwarding** from STT to TTS to ensure consistency:
 
-| User Speaks | Bot Responds In | Numbers In |
-|-------------|-----------------|------------|
-| English | English | English |
-| Hinglish | Hinglish | English (always) |
-| Says "speak in Hindi" | Pure Hindi | Hindi |
+| User Speaks | Bot Responds In | Numbers In | Technical Flow |
+|-------------|-----------------|------------|----------------|
+| English     | English         | English    | `en-IN` detected → `en-IN` spoken |
+| Hindi       | Pure Hindi      | Hindi      | `hi-IN` detected → `hi-IN` spoken |
+| Hinglish    | Hinglish        | English    | `hi-IN` (or `en-IN`) detected → matching spoken |
 
 **Why keep numbers in English during Hinglish?**
 Hindi numerals spoken aloud (e.g., "ek lakh sattaavan hazaar") can be confusing when dealing with precise stock values. English numbers (e.g., "one lakh fifty-seven thousand") are universally understood in Indian financial contexts.
+
+**Automated Matching:**
+Previously, the TTS engine was hardcoded to a specific language. Now, the `transcribe_audio()` function extracts the language code from the Sarvam STT response (e.g., `hi-IN`, `en-IN`) and forwards it directly to the `stream_tts()` engine. This ensures that the bot's response is rendered with the appropriate accents and rules for the language the user actually spoke.
+
+---
+
+## Conversation Memory Structure
 
 ### The "You may end the call" Phrase
 This is a signal phrase. When the user says goodbye, thanks, or otherwise indicates they're done, the LLM includes this phrase in its response. This serves as:
