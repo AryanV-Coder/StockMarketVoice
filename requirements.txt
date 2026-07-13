@@ -11,3 +11,10 @@ torch
 torchaudio
 silero-vad
 psycopg2-binary
+# LangChain agent stack
+langchain
+langchain-groq
+langgraph
+# Stock market data libraries
+yfinance
+nsepython

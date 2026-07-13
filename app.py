@@ -11,7 +11,12 @@ from audio_utils import decode_twilio_media, save_pcm_as_wav
 from vad_service import VADProcessor
 from sarvam_services.sarvam_stt import transcribe_audio
 from sarvam_services.sarvam_tts import stream_tts, AUDIO_DIR
-from groq_services.groq_llm import chat, SYSTEM_PROMPT
+from groq_services.groq_llm import (
+    chat,
+    SYSTEM_PROMPT,
+    initialize_agent_for_call,
+    cleanup_agent_for_call,
+)
 from twilio_services.twilio_call import make_call
 from barge_in import BargeInDetector, handle_barge_in
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,11 +40,10 @@ app.include_router(clients_router)
 app.include_router(orchestrate_router)
 app.include_router(test_call_router)
 
-# Per-call conversation history (keyed by CallSid)
-call_histories: dict[str, list[dict]] = {}
-
 # Per-CallSid context: stores client_name + stock_data
 # Keyed by Twilio CallSid for perfect isolation between simultaneous calls
+# Note: conversation history is now owned by the LangChain agent's InMemorySaver
+# (keyed by call_sid as thread_id). No manual call_histories dict needed.
 call_contexts: dict[str, dict] = {}
 
 
@@ -178,9 +182,9 @@ async def media_stream(websocket: WebSocket):
 
             elif event == "stop":
                 print("⏹ Stream stopped")
-                # Clean up conversation history
-                if call_sid and call_sid in call_histories:
-                    del call_histories[call_sid]
+                # Clean up the LangChain agent for this call
+                if call_sid:
+                    cleanup_agent_for_call(call_sid)
                 break
 
     except Exception as e:
@@ -237,30 +241,16 @@ async def _bot_greeting(
 
         print(f"📊 Injecting stock data for {client_name} into conversation")
 
-        # Initialize chat history with system prompt + stock data as first user message
-        if call_sid not in call_histories:
-            call_histories[call_sid] = []
+        # Initialize the LangChain agent with stock data baked into its system prompt.
+        # The agent stores conversation history internally via InMemorySaver (keyed by call_sid).
+        initialize_agent_for_call(call_sid, stock_message)
 
-        history = call_histories[call_sid]
-        history.append({"role": "system", "content": SYSTEM_PROMPT})
-        history.append({
-            "role": "user",
-            "content": f"Here is the stock data for today's call:\n\n{stock_message}"
-        })
-
-        # Get the LLM's opening greeting
+        # Get the LLM's opening greeting via the agent
         try:
-            from groq import Groq
-            groq_client = Groq(api_key=config.GROQ_API_KEY)
-            response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=history,
-                stream=False,
-                temperature=0.7,
-                max_tokens=200,
+            ai_greeting = await chat(
+                "Begin the call. Greet the client and give them a high-level summary of their stock purchases.",
+                call_sid,
             )
-            ai_greeting = response.choices[0].message.content
-            history.append({"role": "assistant", "content": ai_greeting})
             print(f"✅ [Bot Greeting] {ai_greeting}")
         except Exception as e:
             print(f"❌ LLM greeting error: {e}")
@@ -290,20 +280,14 @@ async def _bot_greeting(
     except Exception as e:
         print(f"🔥 Error in bot greeting: {e}")
 
-        # Recover: inject a "no data" context so the LLM doesn't hallucinate
-        if call_sid not in call_histories:
-            call_histories[call_sid] = []
-        history = call_histories[call_sid]
-        if not history:
-            history.append({"role": "system", "content": SYSTEM_PROMPT})
-        history.append({
-            "role": "user",
-            "content": f"Client Name: {client_name}\nNo stock purchase data was found in our database for this client today. Inform them politely that there are no stock records for today and ask if there's anything else you can help with."
-        })
+        # Recover: initialize a fallback agent with no stock data so the LLM doesn't hallucinate
+        initialize_agent_for_call(
+            call_sid,
+            f"Client Name: {client_name}\nNo stock purchase data was found in our database for this client today.",
+        )
 
         # Speak a safe fallback greeting
         fallback = f"Hello {client_name}, this is Jeevan from your brokerage. I unfortunately don't have any stock purchase records for you today. Is there anything else I can help you with?"
-        history.append({"role": "assistant", "content": fallback})
 
         try:
             async def send_audio_chunk(audio_bytes: bytes):
@@ -360,11 +344,9 @@ async def _process_utterance(
             vad.bot_is_speaking = False
             return
 
-        # 3. Get AI response from Groq LLM (non-streaming)
-        #    Chat history already has system prompt + stock data from the greeting phase
-        if call_sid not in call_histories:
-            call_histories[call_sid] = []
-        ai_reply = chat(text, call_histories[call_sid])
+        # 3. Get AI response from the LangChain agent (non-streaming)
+        #    The agent remembers the full conversation via its InMemorySaver (thread_id = call_sid)
+        ai_reply = await chat(text, call_sid)
         print(f"✅ [AI Reply] {ai_reply}")
 
         # 4. Stream TTS audio back to Twilio (cancellable by barge-in)

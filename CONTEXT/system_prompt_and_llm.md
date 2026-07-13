@@ -2,145 +2,141 @@
 
 ## Overview
 
-This document details the system prompt engineering behind "Jeevan", the AI broker persona, including every rule, language constraint, and behavioral guardrail. It also explains how the prompt interacts with the injected stock data and how the LLM's conversation memory is structured.
+This document details the system prompt engineering behind "Jeevan", the AI broker persona, the LangChain agent architecture, the 4 live-data tools, and how conversation memory is structured per call.
+
+---
+
+## Architecture: LangChain Agent
+
+The plain Groq API call has been replaced with a **LangChain `create_agent`** setup.
+
+**File:** `groq_services/groq_llm.py`
+
+```
+Supabase stock data (columns/rows)
+         │
+         ▼ injected into system prompt at call start
+┌────────────────────────────────────────────────┐
+│         LangChain Agent (Jeevan)               │
+│  model: groq/llama-3.3-70b-versatile           │
+│  system_prompt: Jeevan persona + stock data    │
+│                                                 │
+│  TOOLS (called on demand):                     │
+│  ├── get_live_stock_price(symbol)              │
+│  ├── get_stock_metrics(symbol)                 │
+│  ├── get_market_status()                       │
+│  └── get_stock_history(symbol, days)           │
+└────────────────────────────────────────────────┘
+         │
+         ▼
+    ai_reply (str) → TTS → Twilio
+```
+
+### Design rule: Zero Hallucination
+- **Supabase data** (what client bought) → baked into the system prompt at call start — agent reads from this, never invents it
+- **Live market data** (current price, P/E, market status) → fetched by tools only when the user explicitly asks
 
 ---
 
 ## The Full System Prompt
 
-**File:** `groq_services/groq_llm.py`
+**File:** `groq_services/groq_llm.py` → `SYSTEM_PROMPT_BASE`
+
+The system prompt is a template with a `{stock_data}` placeholder. At call start, `initialize_agent_for_call()` renders it with the actual client data and bakes it into the agent's system prompt.
 
 ```
-You are Jeevan, a professional AI investment assistant acting as a broker.
-You are making an outbound call to a client to inform them about the stocks they bought today.
+You are Jeevan, a professional AI investment assistant acting as a broker...
 
-YOUR ROLE:
-- You INITIATE the conversation. The very first message you receive will contain the
-  client's name and their stock data (columns and rows).
-- Greet the customer warmly BY NAME and provide a brief, high-level summary of their
-  stock purchases for today.
-- DO NOT read every stock line by line. Mention the number of stocks bought and highlight
-  the top 2-3 by value. Then ask if they'd like a detailed breakdown.
+TOOL USAGE RULES:
+- Use tools ONLY when the user explicitly asks for live/current information.
+- NEVER call a tool to verify data already provided in the stock data below.
+- NEVER hallucinate stock prices or metrics.
+- When using a tool, use the NSE ticker symbol (e.g., "ITC", "TATASTEEL").
 
-LANGUAGE RULES:
-- By default, speak entirely in English.
-- If the user speaks in Hinglish, reply in Hinglish. However, YOU MUST speak all numbers
-  in English.
-- If the user explicitly says "speak in Hindi", then switch and speak everything in Hindi.
+... [persona, language, conversation rules] ...
 
-CONVERSATION RULES:
-1. You are on a live voice call — keep ALL responses to a maximum of 3-4 sentences.
-2. Maintain a respectful, professional broker tone throughout the conversation.
-3. The user may ask follow-up questions about their stocks — answer using ONLY the provided data.
-4. CRITICAL: NEVER suggest, recommend, or advise the user to buy or sell any stock.
-5. CRITICAL: ONLY provide information about the stocks the user has already bought today.
-6. If the user asks about something outside of today's stock data, politely let them know
-   you can only assist with today's purchases.
-7. Speak naturally as if you are a real person on the phone — avoid robotic phrasing.
-8. If the user expresses that they are done, or if you feel the user wants to end the
-   conversation, end your reply by stating: "You may end the call."
-9. CRITICAL: All prices and values in the provided data are in Indian Rupees (INR).
-   Assume this context naturally when discussing monetary values.
+--- TODAY'S STOCK DATA FOR THIS CLIENT ---
+{stock_data}
+--- END OF STOCK DATA ---
 ```
 
 ---
 
-## Prompt Design Decisions
+## Tools
 
-### Why "Jeevan"?
-A human-sounding Indian name makes the voice call feel natural and personable, as opposed to a generic "AI Assistant" or a Western name that might feel out of place for Indian stock market clients.
+All tools are defined with `@tool` decorator and use `yfinance` (.NS suffix for NSE) and `nsepython`.
 
-### Why NOT read stocks line-by-line?
-Voice calls have limited attention span. Reading 20 stocks sequentially would take over a minute and bore the listener. The prompt instructs the LLM to:
-1. State the total count of stocks
-2. Highlight the top 2-3 by value
-3. Offer a detailed breakdown only if requested
+| Tool | Library | Triggered when |
+|---|---|---|
+| `get_live_stock_price(symbol)` | yfinance | User asks current price of a stock |
+| `get_stock_metrics(symbol)` | yfinance | User asks P/E, market cap, dividend yield |
+| `get_market_status()` | nsepython (+ IST fallback) | User asks if market is open |
+| `get_stock_history(symbol, days)` | yfinance | User asks about recent trend/movement |
 
-### Language Adaptation Rules
-
-The system supports three primary language modes, with **automated language code forwarding** from STT to TTS to ensure consistency:
-
-| User Speaks | Bot Responds In | Numbers In | Technical Flow |
-|-------------|-----------------|------------|----------------|
-| English     | English         | English    | `en-IN` detected → `en-IN` spoken |
-| Hindi       | Pure Hindi      | Hindi      | `hi-IN` detected → `hi-IN` spoken |
-| Hinglish    | Hinglish        | English    | `hi-IN` (or `en-IN`) detected → matching spoken |
-
-**Why keep numbers in English during Hinglish?**
-Hindi numerals spoken aloud (e.g., "ek lakh sattaavan hazaar") can be confusing when dealing with precise stock values. English numbers (e.g., "one lakh fifty-seven thousand") are universally understood in Indian financial contexts.
-
-**Automated Matching:**
-Previously, the TTS engine was hardcoded to a specific language. Now, the `transcribe_audio()` function extracts the language code from the Sarvam STT response (e.g., `hi-IN`, `en-IN`) and forwards it directly to the `stream_tts()` engine. This ensures that the bot's response is rendered with the appropriate accents and rules for the language the user actually spoke.
+Symbol normalization: tools accept `"ITC"` or `"ITC.NS"` — `.NS` suffix is auto-appended.
 
 ---
 
-## Conversation Memory Structure
+## Conversation Memory
 
-### The "You may end the call" Phrase
-This is a signal phrase. When the user says goodbye, thanks, or otherwise indicates they're done, the LLM includes this phrase in its response. This serves as:
-1. A polite way to wrap up the conversation
-2. A potential trigger for automated call termination (future feature)
+Conversation state is managed by **LangGraph's `InMemorySaver`** checkpointer, keyed by `call_sid` (the Twilio CallSid used as `thread_id`). The manual `call_histories` dict has been removed from `app.py`.
 
-### No Buy/Sell Advice
-This is a regulatory guardrail. The system is purely informational — it reports what was already purchased. It does not provide investment advice, which would require SEBI registration.
+### Per-call flow
 
----
+```
+1. Call answered → _bot_greeting()
+   └── initialize_agent_for_call(call_sid, stock_data_str)
+       │  Creates agent with system_prompt = persona + stock data
+       └── chat("Begin the call...", call_sid)
+           └── agent.invoke({messages: [...]}, config={thread_id: call_sid})
+               └── LLM generates greeting → TTS
 
-## Conversation Memory Structure
+2. User speaks → _process_utterance()
+   └── chat(user_text, call_sid)
+       └── agent.invoke({messages: [...]}, config={thread_id: call_sid})
+           │  Agent may call tools internally before replying
+           └── LLM reply → TTS
 
-For each active call, the LLM sees the following message structure:
-
-```json
-[
-  {"role": "system", "content": "<SYSTEM_PROMPT>"},
-  {"role": "user", "content": "Here is the stock data for today's call:\n\nClient Name: Aryan\nColumns: stock_name, quantity, avg_rate, stock_buy_value\nRows:\n  ['Tata Steel Limited', 100, 172.1178, 17211.78]\n  ..."},
-  {"role": "assistant", "content": "Hello Aryan, this is Jeevan. Today you've purchased 20 different stocks, with your top investments being..."},
-  {"role": "user", "content": "Tell me about my lowest priced stock"},
-  {"role": "assistant", "content": "Aryan, the lowest priced stock you bought today is..."},
-  ...
-]
+3. Call ends → cleanup_agent_for_call(call_sid)
+   └── Removes agent from _agent_registry
+       (InMemorySaver thread state is GC'd naturally)
 ```
 
-### Key Points
+---
 
-1. The **stock data never leaves memory** — it's always the second message in history, visible to the LLM on every turn.
-2. The **system prompt** is always the first message, enforcing persona and rules on every response.
-3. Full conversation history is maintained, so the LLM can reference earlier parts of the conversation.
-4. History is cleaned up (`del call_histories[call_sid]`) when the call ends.
+## Public API (`groq_services/groq_llm.py`)
+
+| Symbol | Type | Description |
+|---|---|---|
+| `SYSTEM_PROMPT_BASE` | `str` | Template with `{stock_data}` placeholder |
+| `SYSTEM_PROMPT` | `str` | Alias of `SYSTEM_PROMPT_BASE` (backward compat) |
+| `STOCK_TOOLS` | `list` | All 4 tool functions |
+| `initialize_agent_for_call(call_sid, stock_data_str)` | `None` | Creates and registers agent for this call |
+| `cleanup_agent_for_call(call_sid)` | `None` | Removes agent from registry |
+| `chat(user_message, call_sid)` | `str` | Sends message to agent, returns text reply |
+
+> **Breaking change from old API:** `chat()` now takes `call_sid: str` as second arg instead of `chat_history: list[dict]`.
 
 ---
 
 ## LLM Configuration
 
-**Model:** `llama-3.3-70b-versatile` (via Groq API)
+**Model:** `groq/llama-3.3-70b-versatile` (via `langchain-groq`)
 
 | Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| `temperature` | 0.7 | Balanced between creativity and determinism. Lower would be too robotic for voice. |
-| `max_tokens` | 200 | Enforces brevity. 200 tokens ≈ 3-4 spoken sentences. |
-| `stream` | False | Non-streaming for simplicity. LLM response is fast enough (~200ms via Groq). |
-
----
-
-## The `chat()` Function
-
-**File:** `groq_services/groq_llm.py`
-
-```python
-def chat(user_message: str, chat_history: list[dict] | None = None) -> str:
-```
-
-- If `chat_history` is `None` or empty, it auto-initializes with the system prompt.
-- For follow-up utterances during a call, the history already contains the system prompt and stock data (injected by `_bot_greeting()`), so the system prompt is NOT added again.
-- The user message is appended, the API is called, and the assistant reply is appended.
-- On error, returns a safe fallback: `"Sorry, I am having trouble processing your request right now."`
+|---|---|---|
+| `temperature` | 0.7 | Balanced creativity/determinism |
+| `max_tokens` | 200 | Enforces brevity for voice calls |
+| `stream` | False | Non-streaming; Groq latency ~200ms |
+| `checkpointer` | `InMemorySaver()` | Shared global; keyed by `call_sid` as `thread_id` |
 
 ---
 
 ## Files Involved
 
 | File | Role |
-|------|------|
-| `groq_services/groq_llm.py` | System prompt definition, `chat()` function, Groq API config |
-| `app.py` | `_bot_greeting()` injects stock data as first user message |
+|---|---|
+| `groq_services/groq_llm.py` | System prompt, 4 tools, agent factory, `chat()` |
+| `app.py` | `_bot_greeting()` calls `initialize_agent_for_call()`, `_process_utterance()` calls `chat(text, call_sid)` |
 | `config.py` | `GROQ_API_KEY` |
+| `requirements.txt` | `langchain`, `langchain-groq`, `langgraph`, `yfinance`, `nsepython` |
