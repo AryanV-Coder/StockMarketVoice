@@ -127,9 +127,10 @@ The function returns all three formats simultaneously: `pcm_8k`, `pcm_16k`, `flo
 
 1. Each TTS audio chunk is base64-encoded.
 2. Wrapped in a Twilio media event JSON: `{"event": "media", "streamSid": ..., "media": {"payload": ...}}`
-3. Sent over the WebSocket to Twilio for immediate playback.
-4. After all chunks are sent, a `"mark"` event (`bot_speech_done`) is sent.
-5. When Twilio confirms the mark, `vad.bot_is_speaking` is set to `False`, re-enabling user audio processing.
+3. Sent over the WebSocket to Twilio for immediate playback via `await websocket.send_json(media_message)`.
+4. **Resilience**: The `send_json` is wrapped in a `try/except` block. If the user hangs up mid-speech (closing the WebSocket), the exception is caught, and a `cancel_event.set()` is triggered to immediately stop the TTS engine from generating useless background audio chunks.
+5. After all chunks are sent, a `"mark"` event (`bot_speech_done`) is sent (also safely guarded by `try/except`).
+6. When Twilio confirms the mark, `vad.bot_is_speaking` is set to `False`, re-enabling user audio processing.
 
 ---
 

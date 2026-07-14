@@ -106,13 +106,17 @@ The `stream_tts()` function accepts an optional `cancel_event: asyncio.Event`:
 - The `async with` context manager ensures the Sarvam WebSocket is properly closed.
 - Returns `False` on cancellation (vs `True` on success).
 
-### Phase 5: Post-Interrupt Flow
+### Phase 5: Post-Interrupt Flow & LangGraph State Pruning
 
 After barge-in, the system is in the same state as if the bot had finished speaking normally:
 - `bot_is_speaking = False`
 - VAD is clean and ready to collect a new utterance
 - The user's speech is being accumulated by `VADProcessor.process()`
-- When the user finishes speaking (700ms silence), the normal STT → LLM → TTS pipeline runs
+
+**CRITICAL (State Pruning):** Because the bot was interrupted, it might have been in the middle of executing a `tool_call` when the audio was cut. LangGraph requires strict message sequencing (an `AIMessage` with a `tool_calls` array MUST be immediately followed by a `ToolMessage`). 
+Before processing the user's *new* audio utterance, the system inspects the LangGraph `InMemorySaver` state. If the last message in history is an `AIMessage` with pending `tool_calls`, it surgically injects a `RemoveMessage(id=msg.id)` into the graph to delete the dangling tool call. This completely resets the agent's context and prevents severe pipeline crashes.
+
+When the user finishes speaking (700ms silence), the normal STT → LLM → TTS pipeline runs.
 
 ---
 

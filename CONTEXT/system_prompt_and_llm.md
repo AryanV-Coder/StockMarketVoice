@@ -73,7 +73,10 @@ All tools are defined with `@tool` decorator and use `yfinance` (.NS suffix for 
 | `get_market_status()` | nsepython (+ IST fallback) | User asks if market is open |
 | `get_stock_history(symbol, days)` | yfinance | User asks about recent trend/movement |
 
-Symbol normalization: tools accept `"ITC"` or `"ITC.NS"` — `.NS` suffix is auto-appended.
+**Robustness Features:**
+- **Symbol normalization**: Tools accept `"ITC"` or `"ITC.NS"` — `.NS` suffix is auto-appended.
+- **BSE Fallback**: If Yahoo Finance fails to return data for an NSE symbol (which happens due to API bugs for tickers like `TATAMOTORS.NS` or `ZOMATO.NS`), the tools automatically swap to the Bombay Stock Exchange (`.BO`) suffix and retry.
+- **Schema Safety**: `get_stock_history` accepts `Union[int, str]` for `days` to prevent agent crashes if the LLM passes a string (e.g. `"5"` instead of `5`).
 
 ---
 
@@ -93,9 +96,10 @@ Conversation state is managed by **LangGraph's `InMemorySaver`** checkpointer, k
 
 2. User speaks → _process_utterance()
    └── chat(user_text, call_sid)
-       └── agent.invoke({messages: [...]}, config={thread_id: call_sid})
-           │  Agent may call tools internally before replying
-           └── LLM reply → TTS
+       └── agent.astream_events({messages: [...]}, version="v2", config={thread_id: call_sid})
+           │  Streams internal reasoning: [Agent thinking], [Tool call], [Tool result]
+           │  Agent may call multiple tools sequentially or in parallel
+           └── Final LLM reply aggregated → TTS
 
 3. Call ends → cleanup_agent_for_call(call_sid)
    └── Removes agent from _agent_registry
