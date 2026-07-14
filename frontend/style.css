@@ -1,13 +1,17 @@
 :root {
-    --bg-color: #0b1120;
-    --card-bg: #1e293b;
-    --primary: #3b82f6;
-    --primary-hover: #2563eb;
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --border-color: #334155;
-    --success: #10b981;
-    --error: #ef4444;
+    /* 
+     * Pure blue palette — no slate/indigo hues.
+     * Anchored on hue 210–215 (sky/ocean blue).
+     */
+    --bg-color:       #07111f;  /* Very dark ocean blue                */
+    --card-bg:        #0d2038;  /* Medium navy — warmer, clearly blue   */
+    --primary:        #1a7fe8;  /* Vivid sky blue                       */
+    --primary-hover:  #1467c4;  /* Slightly darker sky blue             */
+    --text-main:      #e8f4ff;  /* Off-white with a blue tint           */
+    --text-muted:     #7aa8cc;  /* Muted blue-grey                      */
+    --border-color:   #1a3d5c;  /* Visible blue border                  */
+    --success:        #22c55e;
+    --error:          #ef4444;
 }
 
 * {
@@ -35,12 +39,12 @@ body {
     align-items: center;
 }
 
-/* Minimal Header Styling */
+/* ─── Header ─────────────────────────────────────────────── */
 .header-area {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 50px; /* Further from the main app */
+    margin-bottom: 52px;
     animation: fadeIn 0.8s ease;
 }
 
@@ -49,29 +53,30 @@ body {
     font-weight: 700;
     letter-spacing: 0.5px;
     margin-bottom: 8px;
-    background: linear-gradient(135deg, #2dd4bf, #3b82f6); /* Cyan to Blue */
+    /* Sky blue → deep ocean blue — zero purple hue */
+    background: linear-gradient(135deg, #6ec6ff, #1a7fe8);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-align: center;
-    text-shadow: 0 4px 20px rgba(45, 212, 191, 0.2);
 }
 
 .project-subtitle {
     color: var(--text-muted);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 400;
-    letter-spacing: 2px;
+    letter-spacing: 2.5px;
     text-transform: uppercase;
     text-align: center;
 }
 
+/* ─── Tab Bar ─────────────────────────────────────────────── */
 .tab-bar {
     background-color: var(--card-bg);
     border-radius: 30px;
     padding: 5px;
     display: flex;
     justify-content: center;
-    margin-bottom: 30px;
+    margin-bottom: 28px;
     width: fit-content;
     border: 1px solid var(--border-color);
 }
@@ -90,10 +95,12 @@ body {
 
 .tab-btn.active {
     background-color: var(--primary);
-    color: white;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    color: #ffffff;
+    /* Sky blue glow — no purple */
+    box-shadow: 0 4px 14px rgba(26, 127, 232, 0.45);
 }
 
+/* ─── Tab Content ─────────────────────────────────────────── */
 .tab-content {
     display: none;
     width: 100%;
@@ -104,13 +111,14 @@ body {
     display: block;
 }
 
+/* ─── Card ────────────────────────────────────────────────── */
 .card {
     background-color: var(--card-bg);
     border-radius: 16px;
     padding: 32px 24px;
     width: 100%;
     border: 1px solid var(--border-color);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
 .card h2 {
@@ -118,8 +126,10 @@ body {
     font-weight: 600;
     margin-bottom: 24px;
     text-align: center;
+    color: var(--text-main);
 }
 
+/* ─── Form ────────────────────────────────────────────────── */
 .form-group {
     margin-bottom: 20px;
 }
@@ -137,7 +147,7 @@ body {
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background-color: var(--bg-color);
-    color: white;
+    color: var(--text-main);
     font-size: 15px;
     outline: none;
     transition: border-color 0.2s;
@@ -147,6 +157,7 @@ body {
     border-color: var(--primary);
 }
 
+/* ─── Button ──────────────────────────────────────────────── */
 .action-area {
     margin-top: 30px;
 }
@@ -155,39 +166,43 @@ body {
     width: 100%;
     padding: 14px;
     background-color: var(--primary);
-    color: white;
+    color: #ffffff;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     font-size: 15px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s;
+    letter-spacing: 0.3px;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 14px rgba(26, 127, 232, 0.35);
 }
 
 .primary-btn:hover {
     background-color: var(--primary-hover);
+    box-shadow: 0 6px 20px rgba(26, 127, 232, 0.5);
 }
 
 .primary-btn:disabled {
-    opacity: 0.7;
+    opacity: 0.6;
     cursor: not-allowed;
+    box-shadow: none;
 }
 
-/* Toast */
+/* ─── Toast ───────────────────────────────────────────────── */
 .toast {
     position: fixed;
     bottom: 30px;
     left: 50%;
     transform: translateX(-50%) translateY(100px);
     background: var(--card-bg);
-    color: white;
+    color: var(--text-main);
     padding: 12px 24px;
     border-radius: 30px;
     font-size: 14px;
     font-weight: 500;
     transition: transform 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
     border: 1px solid var(--border-color);
-    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
     pointer-events: none;
 }
 
@@ -196,27 +211,27 @@ body {
 }
 
 .toast.success { border-left: 4px solid var(--success); }
-.toast.error { border-left: 4px solid var(--error); }
+.toast.error   { border-left: 4px solid var(--error);   }
 
+/* ─── Animations ──────────────────────────────────────────── */
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* Mobile responsive fixes */
+/* ─── Responsive ──────────────────────────────────────────── */
 @media (max-width: 400px) {
-    .card { padding: 24px 16px; }
+    .card    { padding: 24px 16px; }
     .tab-btn { padding: 8px 16px; font-size: 13px; }
 }
 
-/* Desktop sizing upscaling */
 @media (min-width: 768px) {
-    .container { max-width: 650px; padding: 40px; }
-    .card { padding: 48px 40px; }
-    .card h2 { font-size: 24px; margin-bottom: 32px; }
-    .tab-btn { font-size: 16px; padding: 12px 32px; border-radius: 30px; }
-    .form-group { margin-bottom: 24px; }
-    .form-group label { font-size: 15px; margin-bottom: 10px; }
-    .form-group input { font-size: 18px; padding: 16px 20px; }
-    .primary-btn { font-size: 18px; padding: 18px; }
+    .container              { max-width: 650px; padding: 40px; }
+    .card                   { padding: 48px 40px; }
+    .card h2                { font-size: 24px; margin-bottom: 32px; }
+    .tab-btn                { font-size: 16px; padding: 12px 32px; border-radius: 30px; }
+    .form-group             { margin-bottom: 24px; }
+    .form-group label       { font-size: 15px; margin-bottom: 10px; }
+    .form-group input       { font-size: 18px; padding: 16px 20px; }
+    .primary-btn            { font-size: 18px; padding: 18px; }
 }
