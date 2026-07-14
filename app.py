@@ -251,12 +251,10 @@ async def _bot_greeting(
                 "Begin the call. Greet the client and give them a high-level summary of their stock purchases.",
                 call_sid,
             )
-            print(f"✅ [Bot Greeting] {ai_greeting}")
         except Exception as e:
             print(f"❌ LLM greeting error: {e}")
             ai_greeting = f"Hello {client_name}, this is Jeevan from your brokerage. I have your stock update for today."
 
-        # Stream TTS greeting to Twilio (cancellable by barge-in)
         async def send_audio_chunk(audio_bytes: bytes):
             payload = base64.b64encode(audio_bytes).decode("utf-8")
             media_message = {
@@ -264,7 +262,11 @@ async def _bot_greeting(
                 "streamSid": stream_sid,
                 "media": {"payload": payload},
             }
-            await websocket.send_json(media_message)
+            try:
+                await websocket.send_json(media_message)
+            except Exception:
+                # WebSocket already closed by Twilio (user hung up early)
+                pass
 
         success = await stream_tts(ai_greeting, send_audio_chunk, cancel_event=cancel_event)
 
@@ -275,7 +277,10 @@ async def _bot_greeting(
                 "streamSid": stream_sid,
                 "mark": {"name": "bot_speech_done"},
             }
-            await websocket.send_json(mark_message)
+            try:
+                await websocket.send_json(mark_message)
+            except Exception:
+                pass
 
     except Exception as e:
         print(f"🔥 Error in bot greeting: {e}")
@@ -347,7 +352,6 @@ async def _process_utterance(
         # 3. Get AI response from the LangChain agent (non-streaming)
         #    The agent remembers the full conversation via its InMemorySaver (thread_id = call_sid)
         ai_reply = await chat(text, call_sid)
-        print(f"✅ [AI Reply] {ai_reply}")
 
         # 4. Stream TTS audio back to Twilio (cancellable by barge-in)
         async def send_audio_chunk(audio_bytes: bytes):
@@ -358,18 +362,25 @@ async def _process_utterance(
                 "streamSid": stream_sid,
                 "media": {"payload": payload},
             }
-            await websocket.send_json(media_message)
+            try:
+                await websocket.send_json(media_message)
+            except Exception:
+                # User hung up, socket is closed. Set cancel event so TTS stops generating.
+                cancel_event.set()
 
         success = await stream_tts(ai_reply, send_audio_chunk, language=detected_lang, cancel_event=cancel_event)
 
         # 5. Only send mark if TTS wasn't cancelled (barge-in handles its own reset)
-        if success:
+        if success and not cancel_event.is_set():
             mark_message = {
                 "event": "mark",
                 "streamSid": stream_sid,
                 "mark": {"name": "bot_speech_done"},
             }
-            await websocket.send_json(mark_message)
+            try:
+                await websocket.send_json(mark_message)
+            except Exception:
+                pass
         else:
             vad.bot_is_speaking = False
 

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Union
 
 import yfinance as yf
 from langchain_core.messages import RemoveMessage, AIMessage
@@ -108,10 +108,13 @@ def get_live_stock_price(symbol: Annotated[str, "NSE ticker symbol, e.g. 'ITC' o
         info = ticker.info
 
         current_price = info.get("currentPrice") or info.get("regularMarketPrice")
-        day_high = info.get("dayHigh") or info.get("regularMarketDayHigh")
-        day_low = info.get("dayLow") or info.get("regularMarketDayLow")
-        prev_close = info.get("previousClose") or info.get("regularMarketPreviousClose")
-
+        if current_price is None:
+            # Fallback to BSE (.BO) if NSE (.NS) fails (Yahoo Finance bug with some tickers like ZOMATO)
+            ticker_sym = ticker_sym.replace(".NS", ".BO")
+            ticker = yf.Ticker(ticker_sym)
+            info = ticker.info
+            current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+            
         if current_price is None:
             return f"Could not fetch live price for {symbol}. The market may be closed or the symbol may be incorrect."
 
@@ -143,6 +146,13 @@ def get_stock_metrics(symbol: Annotated[str, "NSE ticker symbol, e.g. 'ITC' or '
         info = ticker.info
 
         market_cap = info.get("marketCap")
+        if market_cap is None and info.get("trailingPE") is None:
+            # Fallback to .BO
+            ticker_sym = ticker_sym.replace(".NS", ".BO")
+            ticker = yf.Ticker(ticker_sym)
+            info = ticker.info
+            market_cap = info.get("marketCap")
+
         pe_ratio = info.get("trailingPE")
         dividend_yield = info.get("dividendYield")
         company_name = info.get("longName") or info.get("shortName") or symbol
@@ -214,20 +224,31 @@ def get_market_status() -> str:
 @tool
 def get_stock_history(
     symbol: Annotated[str, "NSE ticker symbol, e.g. 'ITC'"],
-    days: Annotated[int, "Number of recent trading days to fetch (1-30)"] = 5
+    days: Annotated[Union[int, str], "Number of recent trading days to fetch (1-30)"] = 5
 ) -> str:
     """
     Get recent closing price history for an NSE-listed stock.
     Use this when the user asks how a stock has performed recently, its trend, or weekly/monthly movement.
     """
     try:
-        days = max(1, min(days, 30))  # clamp 1–30
+        try:
+            days_int = int(days)
+        except (ValueError, TypeError):
+            days_int = 5
+            
+        days_int = max(1, min(days_int, 30))  # clamp 1–30
         ticker_sym = _normalize_symbol(symbol)
         ticker = yf.Ticker(ticker_sym)
-        hist = ticker.history(period=f"{days}d")
+        hist = ticker.history(period=f"{days_int}d")
 
         if hist.empty:
-            return f"No historical data found for {symbol} in the last {days} days."
+            # Fallback to .BO
+            ticker_sym = ticker_sym.replace(".NS", ".BO")
+            ticker = yf.Ticker(ticker_sym)
+            hist = ticker.history(period=f"{days_int}d")
+
+        if hist.empty:
+            return f"No historical data found for {symbol} in the last {days_int} days."
 
         rows = []
         for date, row in hist.iterrows():
