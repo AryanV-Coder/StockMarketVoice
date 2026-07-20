@@ -104,11 +104,12 @@ The function returns all three formats simultaneously: `pcm_8k`, `pcm_16k`, `flo
 
 **File:** `groq_services/groq_llm.py` → `chat()`
 
-- The transcribed text is appended to the existing `call_histories[call_sid]` as a `"user"` message.
-- The full conversation history (including system prompt + stock data from Phase 0) is sent to **Groq** (`llama-3.3-70b-versatile`).
+- The transcribed text is passed to `chat(user_message, call_sid)`.
+- Internally, `chat()` calls `agent.astream_events(...)` with `version="v2"` on the LangGraph `create_react_agent` agent for the given `call_sid` (used as `thread_id`).
+- **Streaming events** are logged in real-time: `on_chat_model_start` → `[Agent thinking]`, `on_tool_start` → `[Tool call]`, `on_tool_end` → `[Tool result]`, final `on_chain_end` → `[Agent reply]`.
+- The agent may call one or more tools (e.g., `get_live_stock_price`, `get_market_status`) internally before producing a final text reply.
+- Conversation history is persisted automatically by **LangGraph's `InMemorySaver`** (keyed by `call_sid` as `thread_id`). The old `call_histories` dict has been removed.
 - Parameters: `temperature=0.7`, `max_tokens=200`
-- The AI reply is appended to the history as an `"assistant"` message.
-- The LLM has full context of the stock data and all prior conversation turns.
 
 ### Phase 6: Text-to-Speech (TTS) Streaming
 
